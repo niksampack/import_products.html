@@ -2,173 +2,89 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Produkte Import (Bexio -> App)</title>
+    <title>🔍 Excel Inspector (Debug Mode)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
-<body class="bg-gray-100 p-10 font-sans">
+<body class="bg-gray-800 text-white p-10 font-mono">
 
-    <div class="max-w-3xl mx-auto bg-white p-8 rounded-lg shadow-lg">
-        <h1 class="text-2xl font-bold mb-4 text-gray-800">📦 Produkte Importieren (Lager System)</h1>
-        <p class="text-gray-600 mb-6">Laden Sie hier die Excel-Exportdatei Ihrer Produkte aus Bexio hoch.</p>
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-4 text-yellow-400">🔍 ابزار عیب‌یابی فایل اکسل</h1>
+        <p class="mb-4">ما می‌خواهیم ببینیم کامپیوتر چه ستون‌هایی را می‌بیند.</p>
+
+        <input type="file" id="fileInput" class="block w-full mb-4 p-4 bg-gray-700 rounded" onchange="inspectFile()">
         
-        <div class="mb-6 p-8 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50 text-center cursor-pointer hover:bg-blue-100 transition" onclick="document.getElementById('fileInput').click()">
-            <span class="text-4xl">📂</span>
-            <p class="mt-2 font-bold text-blue-700">Hier klicken & Excel-Datei wählen</p>
-            <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleFileSelect()">
-        </div>
-
-        <button id="uploadBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition" onclick="processFile()" disabled>
-            Start Import
-        </button>
-
-        <div class="mt-6">
-            <label class="font-bold text-sm text-gray-700">Status:</label>
-            <div id="status" class="font-bold text-blue-600 mb-2">Warte auf Datei...</div>
-            <div id="logArea" class="w-full h-64 p-4 border rounded bg-gray-900 text-green-400 font-mono text-xs overflow-y-auto shadow-inner"></div>
+        <div class="mt-4">
+            <h3 class="text-xl font-bold text-blue-400">نتایج آنالیز:</h3>
+            <pre id="output" class="bg-black p-4 rounded border border-gray-600 overflow-auto h-96 text-xs text-green-400"></pre>
         </div>
     </div>
 
-    <script type="module">
-        // --------------------------------------------------------------
-        // 🔐 CONFIG (استخراج شده از کد ارسالی شما)
-        // --------------------------------------------------------------
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCY9TmJwzoJRWFTAjhDFBD0eFMR4YKTHJQ",
-            authDomain: "listapp-96713.firebaseapp.com",
-            projectId: "listapp-96713",
-            storageBucket: "listapp-96713.firebasestorage.app",
-            messagingSenderId: "1044312662356",
-            appId: "1:1044312662356:web:64fd48530c4238127828c1"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        // --------------------------------------------------------------
-        // ⚙️ LOGIC
-        // --------------------------------------------------------------
-        
-        window.handleFileSelect = function() {
-            const input = document.getElementById('fileInput');
-            const btn = document.getElementById('uploadBtn');
-            const status = document.getElementById('status');
-            
-            if (input.files.length > 0) {
-                btn.disabled = false;
-                status.innerText = `✅ Datei ausgewählt: ${input.files[0].name}`;
-            }
+    <script>
+        function log(msg) {
+            document.getElementById('output').innerHTML += msg + "\n";
         }
 
-        function log(msg, type="info") {
-            const area = document.getElementById('logArea');
-            const color = type === "error" ? "text-red-400" : (type === "success" ? "text-green-400" : "text-gray-300");
-            area.innerHTML += `<div class="${color} border-b border-gray-800 py-1">> ${msg}</div>`;
-            area.scrollTop = area.scrollHeight;
-        }
-
-        window.processFile = async function() {
+        function inspectFile() {
             const fileInput = document.getElementById('fileInput');
-            const btn = document.getElementById('uploadBtn');
-            const status = document.getElementById('status');
+            const output = document.getElementById('output');
+            output.innerHTML = "⏳ در حال خواندن فایل...\n";
 
             if (!fileInput.files.length) return;
-
-            btn.disabled = true;
-            btn.innerText = "⏳ Wird verarbeitet...";
-            status.innerText = "Lese Excel-Daten...";
-            log("Starte Verarbeitung...", "info");
 
             const file = fileInput.files[0];
             const reader = new FileReader();
 
-            reader.onload = async function(e) {
+            reader.onload = function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     
-                    // داده‌ها معمولاً در شیت اول هستند
+                    log("✅ فایل خوانده شد.");
+                    log(`📂 نام شیت‌ها: ${workbook.SheetNames.join(", ")}`);
+
                     const firstSheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[firstSheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    // تبدیل شیت به JSON
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }); // حالت آرایه‌ای (خام)
 
                     if (jsonData.length === 0) {
-                        throw new Error("Datei ist leer oder hat falsches Format.");
+                        log("❌ فایل خالی است!");
+                        return;
                     }
 
-                    log(`${jsonData.length} Produkte gefunden. Starte Upload...`, "info");
-
-                    // شروع بچ (Batch Write)
-                    let batch = writeBatch(db);
-                    let batchCount = 0;
-                    let successCount = 0;
-
-                    for (const row of jsonData) {
-                        // 🔍 نگاشت ستون‌های Bexio
-                        // ما دنبال 'Produktcode' هستیم.
-                        const code = String(row['Produktcode'] || row['Code'] || row['Artikelnummer'] || '').trim();
-                        
-                        if (!code) continue; // اگر کد نداشت رد شو
-
-                        const productData = {
-                            code: code,
-                            name: row['Produktname'] || row['Bezeichnung'] || row['Artikelname'] || 'Unbekannt',
-                            // ❄️ این خط مهمترین بخش برای انبار هوشمند است:
-                            category: row['Hauptgruppe'] || 'General', 
-                            subcategory: row['Untergruppe'] || '',
-                            unit: row['Einheit'] || 'Stk',
-                            price: Number(row['Verkaufspreis']) || 0,
-                            updatedAt: new Date()
-                        };
-
-                        // ذخیره در کالکشن "products" (نه bexio_contacts)
-                        const docRef = doc(db, "products", code);
-                        batch.set(docRef, productData);
-
-                        batchCount++;
-                        successCount++;
-                        log(`Hinzugefügt: ${productData.name} (${productData.category})`);
-
-                        // محدودیت ۵۰۰ تایی فایربیس
-                        if (batchCount >= 400) {
-                            await batch.commit();
-                            batch = writeBatch(db);
-                            batchCount = 0;
-                            log(`--- Zwichenspeicherung (${successCount}...) ---`, "success");
-                        }
-                    }
-
-                    // ذخیره باقیمانده‌ها
-                    if (batchCount > 0) {
-                        await batch.commit();
-                    }
-
-                    status.innerText = "✅ Import Erfolgreich!";
-                    status.classList.add("text-green-600");
-                    btn.innerText = "Fertig!";
-                    btn.classList.add("bg-green-800");
+                    log("--------------------------------------------------");
+                    log(`📊 ردیف اول (احتمالاً تیترها):`);
+                    log(JSON.stringify(jsonData[0], null, 2)); // نمایش ردیف اول
                     
-                    log("====================================", "success");
-                    log(`🎉 FERTIG! ${successCount} Produkte wurden importiert.`, "success");
-                    log("Sie können diese Seite jetzt schließen.", "success");
-                    alert(`Erfolg! ${successCount} Produkte importiert.`);
+                    log("--------------------------------------------------");
+                    log(`📦 ردیف دوم (اولین محصول):`);
+                    if (jsonData.length > 1) {
+                        log(JSON.stringify(jsonData[1], null, 2));
+                    } else {
+                        log("❌ ردیف دوم وجود ندارد.");
+                    }
 
-                } catch (error) {
-                    console.error(error);
-                    status.innerText = "❌ Fehler beim Import";
-                    status.classList.add("text-red-600");
-                    log(`FEHLER: ${error.message}`, "error");
-                    btn.disabled = false;
-                    btn.innerText = "Erneut versuchen";
+                    log("--------------------------------------------------");
+                    log("💡 تحلیل:");
+                    const headers = jsonData[0];
+                    const likelyCodeIndex = headers.findIndex(h => h && String(h).toLowerCase().includes("code") || String(h).toLowerCase().includes("nr"));
+                    
+                    if (likelyCodeIndex > -1) {
+                        log(`✅ ستون کد پیدا شد در ایندکس: ${likelyCodeIndex} (نام: ${headers[likelyCodeIndex]})`);
+                    } else {
+                        log("❌ هیچ ستونی شبیه به 'Code' یا 'Nr' در ردیف اول پیدا نشد.");
+                        log("⚠️ شاید تیترها در ردیف ۱ نیستند؟");
+                    }
+
+                } catch (err) {
+                    log("❌ خطا: " + err.message);
                 }
             };
 
             reader.readAsArrayBuffer(file);
-        };
+        }
     </script>
 </body>
 </html>
