@@ -2,89 +2,159 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>🔍 Excel Inspector (Debug Mode)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final Import Tool (Auto-Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
-<body class="bg-gray-800 text-white p-10 font-mono">
+<body class="bg-gray-100 p-10 font-sans">
 
-    <div class="max-w-4xl mx-auto">
-        <h1 class="text-3xl font-bold mb-4 text-yellow-400">🔍 ابزار عیب‌یابی فایل اکسل</h1>
-        <p class="mb-4">ما می‌خواهیم ببینیم کامپیوتر چه ستون‌هایی را می‌بیند.</p>
-
-        <input type="file" id="fileInput" class="block w-full mb-4 p-4 bg-gray-700 rounded" onchange="inspectFile()">
+    <div class="max-w-3xl mx-auto bg-white p-8 rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold mb-4 text-gray-800">📦 Produkte Importieren (با تعمیر خودکار)</h1>
+        <p class="text-sm text-gray-500 mb-4">این سیستم کدهای چسبیده به اسم را به طور هوشمند جدا می‌کند.</p>
         
-        <div class="mt-4">
-            <h3 class="text-xl font-bold text-blue-400">نتایج آنالیز:</h3>
-            <pre id="output" class="bg-black p-4 rounded border border-gray-600 overflow-auto h-96 text-xs text-green-400"></pre>
+        <div class="mb-6 p-8 border-2 border-dashed border-green-300 rounded-lg bg-green-50 text-center cursor-pointer hover:bg-green-100 transition" onclick="document.getElementById('fileInput').click()">
+            <span class="text-4xl">🛠️</span>
+            <p class="mt-2 font-bold text-green-700">فایل اکسل را انتخاب کنید</p>
+            <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleFileSelect()">
+        </div>
+
+        <button id="uploadBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded shadow-md disabled:opacity-50 transition" onclick="processFile()" disabled>
+            شروع پردازش و تعمیر
+        </button>
+
+        <div class="mt-6">
+            <div id="status" class="font-bold text-gray-600 mb-2">منتظر فایل...</div>
+            <div id="logArea" class="w-full h-80 p-4 border rounded bg-gray-900 text-green-400 font-mono text-xs overflow-y-auto" dir="ltr"></div>
         </div>
     </div>
 
-    <script>
-        function log(msg) {
-            document.getElementById('output').innerHTML += msg + "\n";
+    <script type="module">
+        // تنظیمات دیتابیس شما (از کدی که فرستادید برداشتم)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCY9TmJwzoJRWFTAjhDFBD0eFMR4YKTHJQ",
+            authDomain: "listapp-96713.firebaseapp.com",
+            projectId: "listapp-96713",
+            storageBucket: "listapp-96713.firebasestorage.app",
+            messagingSenderId: "1044312662356",
+            appId: "1:1044312662356:web:64fd48530c4238127828c1"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // توابع کمکی
+        function log(msg, color="text-green-400") {
+            const area = document.getElementById('logArea');
+            area.innerHTML += `<div class="${color} border-b border-gray-800 py-1">> ${msg}</div>`;
+            area.scrollTop = area.scrollHeight;
         }
 
-        function inspectFile() {
+        window.handleFileSelect = function() {
+            const input = document.getElementById('fileInput');
+            const btn = document.getElementById('uploadBtn');
+            if (input.files.length > 0) {
+                btn.disabled = false;
+                document.getElementById('status').innerText = "✅ فایل آماده است: " + input.files[0].name;
+            }
+        }
+
+        window.processFile = async function() {
             const fileInput = document.getElementById('fileInput');
-            const output = document.getElementById('output');
-            output.innerHTML = "⏳ در حال خواندن فایل...\n";
-
-            if (!fileInput.files.length) return;
-
+            const btn = document.getElementById('uploadBtn');
+            
+            btn.disabled = true;
+            btn.innerText = "در حال پردازش...";
+            
             const file = fileInput.files[0];
             const reader = new FileReader();
 
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
-                    
-                    log("✅ فایل خوانده شد.");
-                    log(`📂 نام شیت‌ها: ${workbook.SheetNames.join(", ")}`);
-
                     const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    
-                    // تبدیل شیت به JSON
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }); // حالت آرایه‌ای (خام)
+                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName]);
 
-                    if (jsonData.length === 0) {
-                        log("❌ فایل خالی است!");
-                        return;
+                    log(`فایل خوانده شد. ${jsonData.length} ردیف پیدا شد.`);
+
+                    let batch = writeBatch(db);
+                    let count = 0;
+                    let successCount = 0;
+
+                    for (const row of jsonData) {
+                        // 1. استخراج داده‌های خام
+                        let code = String(row['Produktcode'] || row['Code'] || '').trim();
+                        let name = String(row['Produktname'] || row['Name'] || row['Beschreibung'] || '').trim();
+                        let category = row['Hauptgruppe'] || 'General';
+                        let unit = row['Einheit'] || 'Stk';
+                        let price = Number(row['Verkaufspreis']) || 0;
+
+                        // 🔴 بخش تعمیر خودکار (Auto-Fix Logic) 🔴
+                        // اگر کد خالی بود ولی اسم شبیه "001 / Name" بود
+                        if ((!code || code === "undefined") && name.includes('/')) {
+                            const parts = name.split('/'); // جدا کردن با علامت اسلش
+                            if (parts.length > 1) {
+                                // فرض می‌کنیم بخش اول کد است و بخش دوم اسم
+                                const potentialCode = parts[0].trim();
+                                // چک می‌کنیم بخش اول عدد باشد یا کوتاه باشد
+                                if (potentialCode.length < 10) { 
+                                    code = potentialCode;
+                                    name = parts.slice(1).join('/').trim(); // بقیه بخش‌ها می‌شوند اسم
+                                    log(`🛠 تعمیر شد: [${code}] - ${name}`, "text-yellow-300");
+                                }
+                            }
+                        }
+
+                        // اگر هنوز هم کدی نداریم، این ردیف به درد نمی‌خورد
+                        if (!code || code === "undefined") {
+                            // log(`رد شد (بدون کد): ${name}`, "text-red-500");
+                            continue;
+                        }
+
+                        // آماده‌سازی برای ذخیره
+                        const productData = {
+                            code: code,
+                            name: name,
+                            category: category,
+                            unit: unit,
+                            price: price,
+                            updatedAt: new Date()
+                        };
+
+                        const docRef = doc(db, "products", code);
+                        batch.set(docRef, productData);
+
+                        count++;
+                        successCount++;
+
+                        if (count >= 400) {
+                            await batch.commit();
+                            batch = writeBatch(db);
+                            count = 0;
+                            log(`--- ذخیره شد (${successCount})... ---`, "text-blue-300");
+                        }
                     }
 
-                    log("--------------------------------------------------");
-                    log(`📊 ردیف اول (احتمالاً تیترها):`);
-                    log(JSON.stringify(jsonData[0], null, 2)); // نمایش ردیف اول
-                    
-                    log("--------------------------------------------------");
-                    log(`📦 ردیف دوم (اولین محصول):`);
-                    if (jsonData.length > 1) {
-                        log(JSON.stringify(jsonData[1], null, 2));
-                    } else {
-                        log("❌ ردیف دوم وجود ندارد.");
-                    }
+                    if (count > 0) await batch.commit();
 
-                    log("--------------------------------------------------");
-                    log("💡 تحلیل:");
-                    const headers = jsonData[0];
-                    const likelyCodeIndex = headers.findIndex(h => h && String(h).toLowerCase().includes("code") || String(h).toLowerCase().includes("nr"));
-                    
-                    if (likelyCodeIndex > -1) {
-                        log(`✅ ستون کد پیدا شد در ایندکس: ${likelyCodeIndex} (نام: ${headers[likelyCodeIndex]})`);
-                    } else {
-                        log("❌ هیچ ستونی شبیه به 'Code' یا 'Nr' در ردیف اول پیدا نشد.");
-                        log("⚠️ شاید تیترها در ردیف ۱ نیستند؟");
-                    }
+                    document.getElementById('status').innerText = `🎉 تمام شد! ${successCount} محصول اضافه شد.`;
+                    document.getElementById('status').className = "font-bold text-green-600 mb-2";
+                    log(`✅ عملیات موفقیت‌آمیز بود.`, "text-green-400 font-bold text-lg");
+                    alert(`موفقیت‌آمیز! \nتعداد ${successCount} محصول وارد سیستم شد.`);
 
-                } catch (err) {
-                    log("❌ خطا: " + err.message);
+                } catch (error) {
+                    console.error(error);
+                    log(`ERROR: ${error.message}`, "text-red-500");
+                    alert("خطا در پردازش فایل");
+                    btn.disabled = false;
                 }
             };
-
             reader.readAsArrayBuffer(file);
-        }
+        };
     </script>
 </body>
 </html>
